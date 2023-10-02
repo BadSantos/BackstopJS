@@ -225,22 +225,27 @@ function writeAllureReport(config, reporter) {
 
         expectedImg = fs.readFileSync(test.pair.reference, {encoding: "base64"});
         actualImg = fs.readFileSync(test.pair.test, {encoding: "base64"});
-        diffImg = fs.readFileSync(test.pair.diffImage, {encoding: "base64"});
+        if (test.pair.diffImage) {
+          diffImg = fs.readFileSync(test.pair.diffImage, {encoding: "base64"});
+        }
         name = test.pair.fileName;
 
         var screenDiff = {
           name,
           expected: `data:image/png;base64,${expectedImg}`,
           actual: `data:image/png;base64,${actualImg}`,
-          diff: `data:image/png;base64,${diffImg}`,
         };
+        if (test.pair.diffImage) {
+          screenDiff.diff = `data:image/png;base64,${diffImg}`;
+        }
+
         type = "application/vnd.allure.image.diff";
         var fileName = allureRunTime.writeAttachment(JSON.stringify(screenDiff), {contentType: type});
         allureStep.addAttachment(name, type, fileName);
         if (test.passed()) {
           allureTest.stage = allureStep.stage = Stage.FINISHED;
           allureTest.status = allureStep.status = Status.PASSED;
-        } else if (test.failed()) {
+        } else {
           allureTest.stage = allureStep.stage = Stage.FINISHED;
           allureTest.status = allureStep.status = Status.FAILED;
         }
