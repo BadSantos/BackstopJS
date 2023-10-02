@@ -561,6 +561,11 @@ You may customize the testsuite name and/or a report file (xunit.xml) path to yo
 },
 ```
 
+Or you can use allure-report:
+```json
+"report": ["allure"]
+```
+
 ### Interactive Web Reporting
 
 ![Approve Scenarios Web Report](http://garris.github.io/BackstopJS/assets/approve_feature_hilite_sm.png)

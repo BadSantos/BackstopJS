@@ -7,6 +7,7 @@ const allSettled = require('../util/allSettled');
 const fs = require('../util/fs');
 const logger = require('../util/logger')('report');
 const compare = require('../util/compare/');
+const { Stage, Status } = require("allure-js-commons");
 
 function replaceInFile (file, search, replace) {
   return new Promise((resolve, reject) => {
@@ -30,6 +31,10 @@ function writeReport (config, reporter) {
 
   if (config.report && config.report.indexOf('CI') > -1 && config.ciReport.format === 'junit') {
     promises.push(writeJunitReport(config, reporter));
+  }
+
+  if (config.report && config.report.indexOf('CI') > -1 && config.ciReport.format === 'allure') {
+    promises.push(writeAllureReport(config, reporter));
   }
 
   if (config.report && config.report.indexOf('json') > -1) {
@@ -169,6 +174,84 @@ function writeBrowserReport (config, reporter) {
     if (config.openReport && config.report && config.report.indexOf('browser') > -1) {
       const executeCommand = require('./index');
       return executeCommand('_openReport', config);
+    }
+  });
+}
+
+function writeAllureReport(config, reporter) {
+  logger.log('Writing Allure Report');
+  return new Promise(function (resolve, reject) {
+    try {
+      var {
+        AllureTest, AllureRuntime,
+        allureReportFolder, LabelName,
+        md5, Stage, Status
+      } = require('allure-js-commons');
+      var fs = require('fs');
+
+      var resultsDir = allureReportFolder(config.ci_report);
+      var allureRunTime = new AllureRuntime({
+        resultsDir: resultsDir,
+      });
+      var allure = new AllureTest(allureRunTime);
+      allure.name = 'Screenshot';
+
+      var group = allureRunTime.startGroup('Group 1');
+      var previousUrl = null;
+      var allureTest = null;
+
+      _.forEach(reporter.tests, test => {
+
+        var viewport = test.pair.viewportLabel;
+        var url = test.pair.url;
+        if (previousUrl !== url) {
+          if (allureTest) {
+            allureTest.endTest();
+          }
+          previousUrl = url;
+          allureTest = group.startTest(url);
+
+          allureTest.addLink(url, 'Url');
+          allureTest.addLink(test.pair.referenceUrl, 'referenceUrl');
+
+          allureTest.addLabel(LabelName.LANGUAGE, "javascript");
+          allureTest.addLabel(LabelName.FRAMEWORK, "codeceptjs");
+          allureTest.addLabel(LabelName.SUITE, reporter.testSuite);
+          allureTest.historyId = md5(url);
+        }
+
+        var allureStep = allureTest.startStep(viewport);
+        allureStep.historyId = md5(viewport + url);
+
+        expectedImg = fs.readFileSync(test.pair.reference, {encoding: "base64"});
+        actualImg = fs.readFileSync(test.pair.test, {encoding: "base64"});
+        diffImg = fs.readFileSync(test.pair.diffImage, {encoding: "base64"});
+        name = test.pair.fileName;
+
+        var screenDiff = {
+          name,
+          expected: `data:image/png;base64,${expectedImg}`,
+          actual: `data:image/png;base64,${actualImg}`,
+          diff: `data:image/png;base64,${diffImg}`,
+        };
+        type = "application/vnd.allure.image.diff";
+        var fileName = allureRunTime.writeAttachment(JSON.stringify(screenDiff), {contentType: type});
+        allureStep.addAttachment(name, type, fileName);
+        if (test.passed()) {
+          allureTest.stage = allureStep.stage = Stage.FINISHED;
+          allureTest.status = allureStep.status = Status.PASSED;
+        } else if (test.failed()) {
+          allureTest.stage = allureStep.stage = Stage.FINISHED;
+          allureTest.status = allureStep.status = Status.FAILED;
+        }
+        allureStep.endStep();
+      });
+      allureTest.endTest();
+      group.endGroup();
+      allureRunTime.writeGroup(group);
+      resolve();
+    } catch (e) {
+      return reject(e);
     }
   });
 }
